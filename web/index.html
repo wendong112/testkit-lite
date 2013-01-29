@@ -1,6 +1,6 @@
 <!--
 # Copyright (C) 2012 Intel Corporation
-# 
+#
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
 # as published by the Free Software Foundation; either version 2
@@ -19,44 +19,80 @@
 #              Zhang, Huihui <huihuix.zhang@intel.com>
 #              Wendong,Sui  <weidongx.sun@intel.com>
 -->
-<!doctype html>
+<html>
 <head>
+<style type="text/css">
+*{text-decoration: none;font: normal sans-serif, arial, helvetica;color: black;}
+body {margin: 2px;}
+iframe{border: 1px solid gray;width: 100%;}
+div{width: 100%;}
+.listtable tr:hover td, .listtable th{background: #f0f0f0;cursor:pointer;}
+.listtable td {border-bottom: 1px dotted #f0f0f0;}
+.listtable {width: 100%;}
+.listtable th{width: 50px; background: #f0f0f0;}
+.layouttable {width: auto;}
+.button{border-radius:2px;border: 0px;background: gray;color: white;}
+.button:hover{box-shadow:1px 1px 2px gray;}
+.button:active{box-shadow:1px 1px 2px gray;background: transparent;color: black;}
+.selectbox {border-radius: 2px;border: 1px solid gray;}
+.label, .button {font-weight: bold;}
+.checkbox{vertical-align:bottom;border: 1px solid gray;}
+#pageswitch01, #pageswitch02{overflow: auto;}
+#caselists{height: auto;border:1pt solid gray;overflow:auto;}
+#casedesctext {color: #b0b0b0;}
+#closewindowbutton {background: red;}
+#closewindowbutton:hover {box-shadow:1px 1px 2px red;}
+#closewindowbutton:active {box-shadow:1px 1px 2px gray;background: transparent;color: black;}
+</style>
 <script src="jquery.js"></script>
 <script>
-	var iTest = 0;
-
-	var Tests;
-	var statusNode;
-	var oTestFrame;
-	var statusFrame;
-	var frmset;
-	var xmldoc;
-
-	var startTime;
 	var defTime = 2000;
-	var timeout;
 	var winCloseTimeout = 5000;
-
 	var server = "http://127.0.0.1:8000";
 	var need_ajax = true;
 
-	var hidestatus;
+	var Tests;
+	var xmldoc;
+	var startTime;
+	var timeout;
+	var cursuite;
+	var curset;
+	var last_test_page = "";
+	var current_page_uri = "";
+	var activetest = true;
+	var iTest = 0;
+
 	var ttestsuite;
 	var tpriority;
 	var tstatus;
 	var ttype;
 	var tcategory;
 	var texecutiontype;
-
+	var tset;
 	var manualcaseslist;
-
 	var cursuite;
 	var curset;
-
 	var last_test_page = "";
 	var current_page_uri = "";
-
 	var activetest = true;
+
+	var statusNode;
+        var testFrame;
+        var statusFrame;
+        var messageFrame;
+	var caseListArea;
+	var controlArea;
+	var testArea;
+	var caseListArea;
+	var manageArea;
+	var loadingArea;
+	var iSuite;
+	var iSet;
+	var iEXEType;
+	var pageIndex = 1;
+	var caseListNum = 20;
+	var casePageNum;
+	var runInSer = false;
 
 	var manualcases = function() {
 		this.casesid = "";
@@ -74,8 +110,7 @@
 		var iEnd = uri_local.indexOf("&", iStart);
 		if (iEnd == -1)
 			return uri_local.substring(iStart);
-
-		return uri_local.substring(iStart, iEnd);
+			return uri_local.substring(iStart, iEnd);
 	}
 
 	function Parm(data, name) {
@@ -86,7 +121,6 @@
 			if (t)
 				p = $(t).text().trim();
 		}
-
 		if (p) {
 			var rawVal = decodeURI(p);
 			if (rawVal.indexOf(',') < 0)
@@ -94,7 +128,6 @@
 			else
 				p = rawVal.split(',');
 		}
-
 		return p;
 	}
 
@@ -119,87 +152,472 @@
 
 		ttestsuite = parms["testsuite"];
 		tpriority = parms["priority"];
-		hidestatus = parms["hidestatus"];
 		tstatus = parms["status"];
 		ttype = parms["type"];
 		tcategory = parms["category"];
 		texecutiontype = parms["execution_type"];
-		if (need_ajax) {
+		tset = parms["set"];
+	}
+
+	function updateXMLByParms(xml){
+		$(xml).find("set").each(
+		function(){
+			var v = $(this).attr('name');
+			if(tset && v != tset){
+				$(this).remove();
+			}
+		});
+		$(xml).find("testcase").each(
+		function() {
+			var v, vType;
+			v = $(this).attr('execution_type');
+			if (texecutiontype && texecutiontype == "manual")
+				vType = "manual";
+			else if (texecutiontype && texecutiontype == "auto")
+				vType = "auto";
+			else if (!texecutiontype)
+				vType = [ "auto", "manual" ];
+			else
+				vType = "auto";
+			if (v != vType && $.inArray(v, vType) < 0)
+				$(this).remove();
+			v = $(this).attr('priority');
+			if (tpriority && v != tpriority
+				&& $.inArray(v, tpriority) < 0)
+				$(this).remove();
+			v = $(this).attr('status');
+			if (tstatus && v != tstatus && $.inArray(v, tstatus) < 0)
+				$(this).remove();
+			v = $(this).attr('type');
+			if (ttype && v != ttype && $.inArray(v, ttype) < 0)
+				$(this).remove();
+			var categories = $(this).find("categories > category");
+				if (categories.length > 0 && tcategory) {
+					var i;
+					var found = false;
+					for (i = 0; i < categories.length; i++) {
+						var category = $(categories).get(i);
+						if ($(category).text().trim() != tcategory
+								&& $.inArray($(category).text().trim(),
+										tcategory) < 0) {
+							found = true;
+							break;
+						}
+					}
+					if (!found)
+						$(this).remove();
+				}
+
+				$(this).attr('result', "N/A");
+		});
+		return xml;
+	}
+
+	function runTestSuite(xml) {
+		$("#versionrow").hide();
+		document.getElementById("suitelist").options.length=0;
+		var i=0;
+		$(xml).find("suite").each(
+			function(){
+				var suitename = $(this).attr('name');
+				document.getElementById("suitelist").options.add(new Option(suitename, i));
+				i++;
+		});
+		xml = updateXMLByParms(xml);
+		initSets(xml);
+		loadingArea.hide();
+		controlArea.show();
+	}
+
+	function resizeFontSize(){
+		var fontSize;
+		if (screen.width <= 600)
+			fontSize="40px";
+		else if (screen.width <= 800 )
+			fontSize="40px";
+		else if (screen.width <= 1000 )
+			fontSize="25px";
+
+		$('*').css("font-size", fontSize);
+	}
+
+	//Selection page start
+	function initCases(xml){
+		iSuiteIndex = document.getElementById("suitelist").selectedIndex;
+		iSuite = document.getElementById("suitelist").options[iSuiteIndex].text;
+		iSetIndex = document.getElementById("setlist").selectedIndex;
+		iSet = document.getElementById("setlist").options[iSetIndex].text;
+		iEXETypeIndex = document.getElementById("exetypelist").selectedIndex;
+		iEXEType = document.getElementById("exetypelist").options[iEXETypeIndex].text;
+		if(iSet != "All"){
+			$(xml).find("set").each(
+				function(){
+					if ($(this).attr('name') != document.getElementById("setlist").options[iSetIndex].text){
+						$(this).remove();
+					}
+			});
+		}
+
+		if(iEXEType != "All"){
+			var iiEXEType='';
+			if (iEXEType == "Manual"){
+				iiEXEType="manual";
+			}else if (iEXEType == "Auto"){
+				iiEXEType="auto";
+			}
+
+			$(xml).find("testcase").each(
+				function(){
+					if ($(this).attr('execution_type') != iiEXEType){
+						$(this).remove();
+					}
+			});
+		}
+		Tests = $(xml).find("testcase");
+		xmldoc = xml;
+		casePageNum=Math.ceil(Tests.length/caseListNum);
+	}
+
+	function showCase(iTest){
+		var ts = $(Tests[iTest]).find('test_script_entry');
+		var it = $(ts).get(0);
+		if(document.getElementById('iframebox').checked){
+			testArea.show();
+			if ($(Tests[iTest]).attr('execution_type') == "manual"){
+				$("#statusframe").show();
+				statusFrameContent = document.getElementById('statusframe').contentWindow;
+				statusFrameContent.document.body.innerHTML = "";
+				//caseslistinfo = "Case ID: "+$(Tests[iTest]).attr('id')+"<br>";
+				caseslistinfo = "Descriptions: "+$(Tests[iTest]).attr('purpose')+"<br>";
+	
+				var preC = $(Tests[iTest]).find('pre_condition');
+				if (preC && preC.length > 0){
+					var preCText = $(preC).get(0);
+					caseslistinfo += "PreCondition: "+$(preCText).text().trim()+"<br>";
+				}
+	
+				var posC = $(Tests[iTest]).find('post_condition');
+				if (posC && posC.length > 0){
+					var posCText = $(posC).get(0);
+					caseslistinfo += "PostCondition: "+$(posCText).text().trim()+"<br>";
+				}
+				var stepInfo = $(Tests[iTest]).find('step_desc');
+				var stepExp = $(Tests[iTest]).find('expected');
+				for(var j=0;j<stepInfo.length;j++){
+					var stepsnum = j + 1;
+					if(stepInfo){
+						var stepInfoText = $(stepInfo[j]).get(0);
+						caseslistinfo += "Step-"+stepsnum+": "+$(stepInfoText).text().trim()+"<br>";
+					}
+					if(stepExp){
+						var stepExpText = $(stepExp[j]).get(0);
+						caseslistinfo += "Expected"+": "+$(stepExpText).text().trim()+"<br>";
+					}
+				}
+
+				statusFrameContent.document.writeln(caseslistinfo);
+			} else {
+				$("#statusframe").hide();
+			}
+
+			if ($(it).text().length > 0){
+				$("#testframe").show();
+				testFrame.src=$(it).text();
+				caseListArea.hide();
+			} else {
+				$("#testframe").hide();
+			}
+		}else{
+			if ($(it).text().length > 0){
+				window.open($(it).text());  		
+				//window.location.href($(it).text());
+                	} else {
+                        	$("#testframe").hide();
+                	}	
+		}
+	}
+
+	function initParmsCases(xml){
+		xml = updateXMLByParms(xml);
+		initCases(xml);
+	}
+
+	function updateTestXML(){
+		if (runInSer){
+			iSuiteIndex = document.getElementById("suitelist").selectedIndex;
 			$.ajax({
 				async : false,
 				type : "GET",
-				url : server + "/get_params",
+				url : "/usr/share/"+document.getElementById("suitelist").options[iSuiteIndex].text+"/tests.xml",
 				dataType : "xml",
-				success : function(data) {
-					hidestatus = Parm(data, 'hidestatus');
-				},
-				error : function(x, t, e) {
-					print_error_log("getParms", e);
-				}
+				success : initCases,
+			});
+		} else {
+			$.ajax({
+				async : false,
+				type : "GET",
+				url : ttestsuite,
+				dataType : "xml",
+				success : initParmsCases
 			});
 		}
 	}
 
-	function runTestsuite_nofilter(xml) {
-		xmldoc = xml;
-		Tests = $(xml).find("testcase");
-		doTest();
+	function showCaseListIndex(){
+		caseLists = document.getElementById("caselists");
+		pageSwitch01 = document.getElementById("pageswitch01");
+		pageSwitch02 = document.getElementById("pageswitch02");
+		pageSwitch01.innerHTML='';
+		pageSwitch02.innerHTML='';
+		pageSwitch01.innerHTML+="<a href=\"javascript:gotoCaseListsPage('-1');\">Prev</a>&nbsp&nbsp;"
+		pageSwitch02.innerHTML+="<a href=\"javascript:gotoCaseListsPage('-1');\">Prev</a>&nbsp&nbsp;"
+		pageSwitch01.innerHTML+="<a href=\"javascript:showCaseListsPage('1');\">|\<\<</a>&nbsp&nbsp;";
+		pageSwitch02.innerHTML+="<a href=\"javascript:showCaseListsPage('1');\">|\<\<</a>&nbsp&nbsp;";
+		var startPage;
+		if (pageIndex-4<1){
+			startPage=1;
+		}else if(pageIndex+4>casePageNum){
+			startPage=casePageNum-8;
+			if(startPage<1)
+				startPage=1;
+		}else{
+			startPage=pageIndex-4;
+		}
+		for(var i=startPage; i<=casePageNum && i<=startPage+8; i++){
+			if(i == pageIndex){
+				pageSwitch01.innerHTML+="<a style=\"color:red\" href=\"javascript:showCaseListsPage('"+i+"');\"> "+i+" </a>&nbsp;";
+				pageSwitch02.innerHTML+="<a style=\"color:red\" href=\"javascript:showCaseListsPage('"+i+"');\"> "+i+" </a>&nbsp;";
+			}else {
+				pageSwitch01.innerHTML+="<a href=\"javascript:showCaseListsPage('"+i+"');\"> "+i+" </a>&nbsp;";
+				pageSwitch02.innerHTML+="<a href=\"javascript:showCaseListsPage('"+i+"');\"> "+i+" </a>&nbsp;";
+			}
+		}
+		pageSwitch01.innerHTML+="<a href=\"javascript:showCaseListsPage('"+casePageNum+"');\">\>\>|</a>&nbsp&nbsp;";
+		pageSwitch02.innerHTML+="<a href=\"javascript:showCaseListsPage('"+casePageNum+"');\">\>\>|</a>&nbsp&nbsp;";
+		pageSwitch01.innerHTML+="<a href=\"javascript:gotoCaseListsPage('1');\">Next</a>&nbsp&nbsp;"
+		pageSwitch02.innerHTML+="<a href=\"javascript:gotoCaseListsPage('1');\">Next</a>&nbsp&nbsp;"
 	}
 
-	function runTestsuite(xml) {
-		xmldoc = xml;
-		$(xml).find("testcase").each(
-				function() {
-					var v, vType;
-					v = $(this).attr('execution_type');
-
-					if (texecutiontype && texecutiontype == "manual")
-						vType = "manual";
-					else if (texecutiontype && texecutiontype == "auto")
-						vType = "auto";
-					else if (!texecutiontype)
-						vType = [ "auto", "manual" ];
-					else
-						vType = "auto";
-
-					if (v != vType && $.inArray(v, vType) < 0)
-						$(this).remove();
-					v = $(this).attr('priority');
-					if (tpriority && v != tpriority
-							&& $.inArray(v, tpriority) < 0)
-						$(this).remove();
-					v = $(this).attr('status');
-					if (tstatus && v != tstatus && $.inArray(v, tstatus) < 0)
-						$(this).remove();
-					v = $(this).attr('type');
-					if (ttype && v != ttype && $.inArray(v, ttype) < 0)
-						$(this).remove();
-					var categories = $(this).find("categories > category");
-					if (categories.length > 0 && tcategory) {
-						var i;
-						var found = false;
-						for (i = 0; i < categories.length; i++) {
-							var category = $(categories).get(i);
-							if ($(category).text().trim() != tcategory
-									&& $.inArray($(category).text().trim(),
-											tcategory) < 0) {
-								found = true;
-								break;
-							}
-						}
-						if (!found)
-							$(this).remove();
-					}
-
-					$(this).attr('result', "N/A");
-				});
-		Tests = $(xml).find("testcase");
-		xmldoc = xml;
-		save_result();
-		doTest();
+	function showCaseList(){
+		caseLists = document.getElementById("caselists");
+		caseLists.innerHTML='';
+		if(casePageNum > 0){
+			var caselistsinfo = "<table id=\"caselisttb\" class=\"listtable\">";
+			var iTest = 0;
+			while (iTest < caseListNum) {
+				var iiTest = (pageIndex-1)*caseListNum+iTest;
+				if(iiTest > Tests.length-1)
+					break;
+				caselistsinfo += "<tr id=\""+iiTest+"\"><th>"+[iiTest+1]+"</th><td>"+$(Tests[iiTest]).attr('id')+"<br><a id=\"casedesctext\">"+$(Tests[iiTest]).attr('purpose')+"</a></td></tr>";
+				iTest++;
+			}
+			caselistsinfo += "</table>";
+			caseLists.innerHTML=caselistsinfo;
+			var lists = document.getElementById('caselisttb').getElementsByTagName('tr');
+			for(var k=0;k<lists.length;k++){
+				lists[k].onclick = function(){
+					showCase(this.id);
+				}
+			}
+		}
 	}
 
-	function precheck_init() {
+	function showCaseListsPage(index){
+		index=parseInt(index);
+
+		if (index < 1){
+			index = 1;
+		}else if(index > casePageNum){
+			index = casePageNum;
+		}
+		pageIndex = index;
+		showCaseListIndex();
+		showCaseList();
+		resizeFontSize();
+	}
+
+	function gotoCaseListsPage(point){
+		caseLists = document.getElementById("caselists");
+		point=="-1"?showCaseListsPage(pageIndex-1):showCaseListsPage(pageIndex+1);
+	 }
+
+	function showCases(){
+		testFrame.src='';
+		testArea.hide();
+		$("#testframe").hide();
+
+		iSetIndex = document.getElementById("setlist").selectedIndex;
+		iSuiteIndex = document.getElementById("suitelist").selectedIndex;
+		iEXETypeIndex = document.getElementById("exetypelist").selectedIndex;
+		if (iSuite != document.getElementById("suitelist").options[iSuiteIndex].text ||
+		    iSet != document.getElementById("setlist").options[iSetIndex].text || 
+			iEXEType != document.getElementById("exetypelist").options[iEXETypeIndex].text){
+			updateTestXML();
+			pageIndex=1;
+			showCaseList();
+		}
+		showCaseListIndex();
+		resizeFontSize();
+		caseListArea.show();
+	}
+
+	function setUpdate(){
+
+	}
+
+        function setUpdateButtonDown(){
+                var i = document.getElementById("setlist").selectedIndex;
+                if (i+1 >= document.getElementById("setlist").options.length)
+                        i=0;
+                else
+                        i++;
+                document.getElementById("setlist").selectedIndex = i;
+        }
+
+	function setUpdateButtonUp(){
+                var i = document.getElementById("setlist").selectedIndex;
+		if(i <= 0)
+			i = document.getElementById("setlist").options.length - 1;
+                else
+                        i--;
+                document.getElementById("setlist").selectedIndex = i;
+        }
+
+	function exeTypeUpdate(){
+		
+	}
+
+	function exeTypeUpdateButtonDown(){
+                var i = document.getElementById("exetypelist").selectedIndex;
+                if (i+1 >= document.getElementById("exetypelist").options.length)
+                        i=0;
+                else
+                        i++;
+                document.getElementById("exetypelist").selectedIndex = i;
+        }
+
+	function exeTypeUpdateButtonUp(){
+                var i = document.getElementById("exetypelist").selectedIndex;
+		if(i <= 0)
+			i = document.getElementById("exetypelist").options.length - 1;
+                else
+                        i--;
+                document.getElementById("exetypelist").selectedIndex = i;
+        }
+
+	function initExeType(){
+		document.getElementById("exetypelist").options.length=0;
+		document.getElementById("exetypelist").options.add(new Option("All", 0));
+		document.getElementById("exetypelist").options.add(new Option("Manual", 0));
+		document.getElementById("exetypelist").options.add(new Option("Auto", 0));
+	}
+
+	function initSets(xml){
+		document.getElementById("setlist").options.length=0;
+		var i = 0;
+		$(xml).find("set").each(
+			function(){
+			document.getElementById("setlist").options.add(new Option($(this).attr('name'), i));
+			i++;
+		});
+		document.getElementById("setlist").options.add(new Option("All", i));
+		initExeType();
+	}
+
+	function suiteUpdate(){
+		iSuiteIndex = document.getElementById("suitelist").selectedIndex;
+		$.ajax({
+			async : false,
+			type : "GET",
+			url : "/usr/share/"+document.getElementById("suitelist").options[iSuiteIndex].text+"/tests.xml",
+			dataType : "xml",
+			success : initSets,
+		});
+	}
+
+	function suiteUpdateButtonDown(){
+		var i = document.getElementById("suitelist").selectedIndex;
+		if (i+1 >= document.getElementById("suitelist").options.length)
+			i=0;
+		else
+			i++;
+		document.getElementById("suitelist").selectedIndex = i;
+		suiteUpdate();
+        }
+	
+	function suiteUpdateButtonUp(){
+                var i = document.getElementById("suitelist").selectedIndex;
+		if (i <= 0)
+			i = document.getElementById("suitelist").options.length - 1;
+                else
+                        i--;
+                document.getElementById("suitelist").selectedIndex = i;
+                suiteUpdate();
+        }
+
+	function runTestSuiteSer(){
+		runInSer = true;
+		$("#versionrow").hide();
+		document.getElementById("suitelist").options.length=0;
+		$(document).ready(function() {
+		$.ajax({
+			type:"GET",
+			url:"config.json",
+			dataType: "json",
+			success: function(data){
+				$.each(data,function(i,item){
+				        if(item.suite){
+                                                document.getElementById("suitelist").options.add(new Option(item.suite, i));
+                                        } else if(item.version){
+                                                $("#versiontext").text(item.version);
+                                                $("#versionrow").show();
+                                        }
+				})
+				suiteUpdate();
+			}
+		})
+		});
+		loadingArea.hide();
+		controlArea.show();	
+	}
+
+	function startSetTest(){
+		iTest = 0;
+		updateTestXML();
+		controlArea.hide();
+		caseListArea.hide();
+		testArea.show();
+		$("#testframe").show();	
+		$("#statusframe").show();	
+		statusFrame.contentWindow.document.body.innerHTML = "";
+		statusNode = init_status_frame();
+		doTest();
+		iSuite = '';
+	}
+
+	function initSelectionPage(){
+		$("#statusframe").show();
+		statusFrame.height = "10%";
+		$("#testframe").show();
+		testFrame.height = "70%";
+		testFrame.src='';
+		manageArea.hide();
+		testArea.hide();
+		controlArea.show();
+	}
+	//Selection page end
+
+	function preCheck() {
+		testArea = $("#testarea");
+                caseListArea = $("#caselistarea");
+                manageArea = $("#managearea");
+                controlArea = $("#controlarea");
+		loadingArea = $("#loadingarea");
+                testArea.hide();
+                caseListArea.hide();
+                manageArea.hide();
+                controlArea.hide();
+		loadingArea.show();
 		server_url = "http://127.0.0.1:8000/check_server";
 		$.ajax({
 			async : false,
@@ -210,62 +628,28 @@
 				print_error_log("can't find a http server",
 						"run widget in the standalone mode");
 				need_ajax = false;
-				init();
+				init_standalone();
 			}
 		});
 	}
 
-	function init() {
+	function init_standalone() {
 		getParms();
+		resizeFontSize();
 
-		oTestFrame = document.getElementById('testframe');
-		if (!oTestFrame)
-			return;
-
+		testFrame = document.getElementById('testframe');
 		statusFrame = document.getElementById('statusframe');
-		if (!statusFrame)
-			return;
+		messageFrame = document.getElementById('messageframe');
+		$("#messageframe").hide();
 
-		var statusWin = statusFrame.contentWindow;
-		if (!statusWin)
-			return;
-
-		statusNode = statusWin.document.createElement("div");
-		if (!statusNode)
-			return;
-		statusWin.document.body.appendChild(statusNode);
-
-		frmset = $($('#main')).get(0);
-		if (!frmset)
-			return;
-
-		if (hidestatus && hidestatus == "1")
-			$(frmset).attr('rows', "0, *");
-		if (need_ajax) {
-			$.ajax({
-				async : false,
-				type : "GET",
-				url : server + '/get_testsuite',
-				dataType : "xml",
-				success : runTestsuite_nofilter,
-				error : function(x, t, e) {
-					print_error_log("init", e);
-				}
-			});
-		}
 		if (!xmldoc) {
-			if (!ttestsuite) {
-				ttestsuite = 'tests.xml';
-			}
 			$.ajax({
 				async : false,
 				type : "GET",
 				url : ttestsuite,
 				dataType : "xml",
-				success : runTestsuite,
-				error : function(x, t, e) {
-					print_error_log("init", e);
-				}
+				success : runTestSuite,
+				error : function(x, t, e){runTestSuiteSer();}
 			});
 		}
 	}
@@ -289,7 +673,7 @@
 		var locator_key = "";
 		var value = "";
 
-		var oTestWin = oTestFrame.contentWindow;
+		var oTestWin = testFrame.contentWindow;
 		var oTestDoc = oTestWin.document;
 		var case_uri = current_page_uri;
 
@@ -298,7 +682,6 @@
 				total_num = getTestPageParam(case_uri, "total_num");
 				locator_key = getTestPageParam(case_uri, "locator_key");
 				value = getTestPageParam(case_uri, "value");
-
 				oPass = $(oTestDoc).find(".pass");
 				oFail = $(oTestDoc).find(".fail");
 
@@ -490,18 +873,18 @@
 
 			if ((current_page_uri.indexOf("2DTransforms") != -1)
 					|| (current_page_uri.indexOf("3DTransforms") != -1)) {
-				oTestFrame.height = 500000 + "px";
+				testFrame.height = 500000 + "px";
 			} else {
-				oTestFrame.height = 2500 + "px";
+				testFrame.height = 2500 + "px";
 			}
-			oTestFrame.src = current_page_uri;
+			testFrame.src = current_page_uri;
 			last_test_page = test_page;
-			if (oTestFrame.attachEvent) {
-				oTestFrame.attachEvent("onload", function() {
+			if (testFrame.attachEvent) {
+				testFrame.attachEvent("onload", function() {
 					CheckResult('yes', 0);
 				});
 			} else {
-				oTestFrame.onload = function() {
+				testFrame.onload = function() {
 					CheckResult('yes', 0);
 				};
 			}
@@ -515,7 +898,6 @@
 		var iTemp1 = 0, iTemp2 = 0;
 		while (iTemp1 < Tests.length) {
 			if ($(Tests[iTemp1]).attr('execution_type') == 'manual') {
-				parent.document.getElementById("statusframe").height = 385 + "px";
 				manualcaseslist[iTemp2] = new manualcases();
 				manualcaseslist[iTemp2].casesid = $(Tests[iTemp1]).attr('id');
 				manualcaseslist[iTemp2].index = iTemp1;
@@ -526,48 +908,45 @@
 			iTemp1++;
 		}
 		if (iTemp2 > 0) {
-			winCloseTimeout = 50000;
-			statusFrame.src = "./manualharness.html";
-			$(frmset).attr('rows', "100,*");
+			statusFrame.src = "manualharness.html";
 		} else if (iTest == Tests.length) {
 			setTimeout("PublishResult()", 2000);
 		}
-		oTestFrame.src = '';
+		testFrame.src = '';
 	}
 
 	function PublishResult() {
-		$(frmset).attr('rows', "0, *");
-		results = oTestFrame.contentWindow;
+		$("#statusframe").hide();
 		var resultXML;
 		resultXML = "<title>HTML5 Test Result XML</title>";
-		resultXML += "<head> <style type='text/css'>\
-html {font-family:DejaVu Sans, Bitstream Vera Sans, Arial, Sans;}\
-section#summary {margin-bottom:1em;}\
-table#results {\
-    border-collapse:collapse;\
-    table-layout:fixed;\
-    width:80%;\
-}\
-table#results th:first-child,\
-table#results td:first-child {\
-    width:40%;\
-}\
-table#results th:last-child,\
-table#results td:last-child {\
-    width:30%;\
-}\
-table#results th {\
-    padding:0;\
-    padding-bottom:0.5em;\
-    text-align:left;\
-    border-bottom:medium solid black;\
-}\
-table#results td {\
-    padding:1em;\
-    padding-bottom:0.5em;\
-    border-bottom:thin solid black;\
-}\
-</style><head>";
+		resultXML += "<head><style type='text/css'>\
+	html {font-family:DejaVu Sans, Bitstream Vera Sans, Arial, Sans;}\
+	section#summary {margin-bottom:1em;}\
+	table#results {\
+	    border-collapse:collapse;\
+	    table-layout:fixed;\
+	    width:100%;\
+	}\
+	table#results th:first-child,\
+	table#results td:first-child {\
+	    width:30%;\
+	}\
+	table#results th:last-child,\
+	table#results td:last-child {\
+	    width:30%;\
+	}\
+	table#results th {\
+	    padding:0;\
+	    padding-bottom:0.5em;\
+	    text-align:left;\
+	    border-bottom:medium solid black;\
+	}\
+	table#results td {\
+	    padding:1em;\
+	    padding-bottom:0.5em;\
+	    border-bottom:thin solid black;\
+	}\
+	</style><head>";
 
 		resultXML += "<section id='summary'>";
 		resultXML += "<h2>Summary</h2>";
@@ -579,7 +958,6 @@ table#results td {\
 				+ "</span> Fail:<span style='color:red;'>" + ifail
 				+ "</span></h3>";
 		resultXML += "</section>";
-
 		resultXML += "<p><table id='results'> <tr> <th> TestSet </th> <th> Pass </th> <th> Fail </th></tr>";
 		var Sets = $(xmldoc).find("set");
 		var i = 0;
@@ -593,7 +971,6 @@ table#results td {\
 			resultXML += "</tr>";
 		}
 		resultXML += "</table>";
-
 		if (ifail > 0) {
 			resultXML += "<section id='failedlist'>";
 			resultXML += "<h2>Fails</h2>";
@@ -609,36 +986,29 @@ table#results td {\
 			resultXML += "</ul>";
 			resultXML += "</section>";
 		}
-
-		resultXML += "<h2>Details</h2>";
-		resultXML += "<form method='post' id='resultform'> <textarea id='results' style='width: 80%; height: 90%;' name='filecontent' disabled='disabled'>"
-				+ save_result() + "</textarea></form>";
-		setTimeout("window.open('','_self','');window.close()", winCloseTimeout);
-		results.document.writeln(resultXML);
+		resultXML += "<h2>Test Result XML</h2>";
+		resultXML += "<textarea id='results' style='width: 100%; height: 70%;' name='filecontent' disabled='disabled'>"
+				+ (new XMLSerializer()).serializeToString(xmldoc) + "</textarea>";
+                manageArea.show();
+                testFrame.height = "95%";
+	        try {
+                        testFrame.contentWindow.document.open();
+                        testFrame.contentWindow.document.writeln(resultXML);
+                        testFrame.contentWindow.document.close();
+                } catch (e) {
+                        testFrame.onload=function(){
+					testFrame.contentWindow.document.open();
+					testFrame.contentWindow.document.writeln(resultXML);
+					testFrame.contentWindow.document.close();testFrame.onload='';
+			};
+                        testFrame.src = "";
+                }
 	}
 
-	function save_result() {
-		var svr = server + "/save_result";
-		var testid = (new Date()).getTime();
-		var contents = (new XMLSerializer()).serializeToString(xmldoc);
-		if (need_ajax) {
-			$.ajax({
-				async : false,
-				type : "POST",
-				url : svr,
-				data : {
-					filename : testid,
-					filecontent : contents
-				},
-				error : function(x, t, e) {
-					print_error_log("doTest", e);
-				}
-			});
-		}
-		return contents;
-	}
 	// merge code from application.js
 	function init_test() {
+		loadingArea.hide();
+		testArea.show();
 		var session_id = Math.round(Math.random() * 10000);
 		init_message_frame();
 		save_session_id(session_id);
@@ -668,8 +1038,7 @@ table#results td {\
 				+ "</div><br/>Message: <div id=\"log_message\">"
 				+ message + "</div>";
 	}
-
-	function save_session_id(session_id) {
+		function save_session_id(session_id) {
 		statusFrame = document.getElementById('statusframe');
 		statusFrame.height = 270 + "px";
 		statusWin = statusFrame.contentWindow;
@@ -683,8 +1052,7 @@ table#results td {\
 					+ "</div><br/><div id=\"execution_progress\"></div><br/>";
 		}
 	}
-
-	function sync_session_id(session_id) {
+		function sync_session_id(session_id) {
 		var server_url = server + "/init_session_id";
 		server_url += "?session_id=" + session_id;
 		$.ajax({
@@ -851,7 +1219,7 @@ table#results td {\
 
 	function execute_test_task(json_task, json_progress) {
 		try {
-			oTestFrame = document.getElementById('testframe');
+			testFrame = document.getElementById('testframe');
 			statusNode = init_status_frame();
 			// update execution progress
 			statusFrame = document.getElementById('statusframe');
@@ -883,18 +1251,18 @@ table#results td {\
 			}
 			if ((current_page_uri.indexOf("2DTransforms") != -1)
 					|| (current_page_uri.indexOf("3DTransforms") != -1)) {
-				oTestFrame.height = 500000 + "px";
+				testFrame.height = 500000 + "px";
 			} else {
-				oTestFrame.height = 2500 + "px";
+				testFrame.height = 2500 + "px";
 			}
-			oTestFrame.src = current_page_uri;
+			testFrame.src = current_page_uri;
 			last_test_page = test_page;
-			if (oTestFrame.attachEvent) {
-				oTestFrame.attachEvent("onload", function() {
+			if (testFrame.attachEvent) {
+				testFrame.attachEvent("onload", function() {
 					extract_case_result('yes', 0);
 				});
 			} else {
-				oTestFrame.onload = function() {
+				testFrame.onload = function() {
 					extract_case_result('yes', 0);
 				};
 			}
@@ -913,20 +1281,18 @@ table#results td {\
 	}
 
 	function extract_case_result(need_check_block, sleep_time) {
-		oTestFrame = document.getElementById('testframe');
-		var oTestWin = oTestFrame.contentWindow;
-		var oTestDoc = oTestFrame.contentWindow.document;
+		testFrame = document.getElementById('testframe');
+		var oTestWin = testFrame.contentWindow;
+		var oTestDoc = testFrame.contentWindow.document;
 		var result = "BLOCK";
 		var case_msg = "";
-
 		oPass = $(oTestDoc).find(".pass");
 		oFail = $(oTestDoc).find(".fail");
-		case_uri = oTestFrame.src.toString();
+		case_uri = testFrame.src.toString();
 
 		total_num = getTestPageParam(case_uri, "total_num");
 		locator_key = getTestPageParam(case_uri, "locator_key");
 		value = getTestPageParam(case_uri, "value");
-
 		if (total_num != "" && locator_key != "" && value != "") {
 			if (locator_key == "id") {
 				var results;
@@ -977,7 +1343,7 @@ table#results td {\
 			if (oTestWin.resultdiv) {
 				case_msg = oTestWin.resultdiv.innerHTML;
 			}
-			result = "PASS";
+				result = "PASS";
 		} else if (oFail.length > 0) {
 			var oRes = $($(oTestDoc).find("table#results")).get(0);
 			// Get error log
@@ -1058,14 +1424,14 @@ table#results td {\
 		}
 
 		if (tasks.length > 0) {
-			statusFrame.src = "./manual_harness.html";
+			statusFrame.src = "manual_harness.html";
 			$($($('#main')).get(0)).attr('rows', "100,*");
 		} else {
 			// No manual cases, generate the result.
 			ask_generate_xml();
 		}
-		oTestFrame = document.getElementById('testframe');
-		oTestFrame.src = '';
+		testFrame = document.getElementById('testframe');
+		testFrame.src = '';
 	}
 
 	function commit_test_result(result, msg) {
@@ -1097,9 +1463,51 @@ table#results td {\
 	}
 </script>
 </head>
-<body id="main" onload='precheck_init()'>
-	<iframe frameborder="1" height="30px" width="100%" id="messageframe"></iframe>
-	<iframe frameborder="1" height="30px" width="100%" id="statusframe"></iframe>
-	<iframe frameborder="1" height="2500px" width="100%" id="testframe"></iframe>
+<body onload="preCheck()">
+<div id="loadingarea" style="text-align:left">Loading ......</div>
+<div id="managearea" style="text-align:right">
+	<input type="button" id="backbutton" class="button" onclick="initSelectionPage()" value="Return Home"></input>
+	<input type="button" id="closewindowbutton" class="button" onclick="window.open('','_self','');window.close()" value="Close Window"></input>
+</div>
+<div id="controlarea">
+        <table class="layouttable"><tr id="versionrow"><td>
+                <label class="label">Tests Version: </label>
+        </td><td>
+		<label class="label" id="versiontext"></label>
+        </td></tr><tr><td>
+		<label class="label">Test Suites: </label>
+	</td><td>
+		<input type="button" class="button" onclick="suiteUpdateButtonUp()" value="<"></input>
+		<select class="selectbox" id="suitelist" onchange="suiteUpdate()"></select>
+		<input type="button" class="button" onclick="suiteUpdateButtonDown()" value=">"></input>
+        </td></tr><tr><td>
+                <label class="label">Test Sets: </label>
+        </td><td>
+		<input type="button" class="button" onclick="setUpdateButtonUp()" value="<"></input>
+                <select class="selectbox" id="setlist" onchange="setUpdate()"></select>
+		<input type="button" class="button" onclick="setUpdateButtonDown()" value=">"></input>
+        </td></tr><tr><td>
+                <label class="label">Execution Type: </label>
+        </td><td>
+		<input type="button" class="button" onclick="exeTypeUpdateButtonUp()" value="<"></input>
+                <select class="selectbox" id="exetypelist" onchange="exeTypeUpdate()"></select>
+		<input type="button" class="button" onclick="exeTypeUpdateButtonDown()" value=">"></input>
+        </td></tr><tr><td colspan="2">
+                <input type="button" id="runbutton" class="button" value="Run" onclick="startSetTest()"/>
+		<label class="label">Or</label>
+                <input type="button" id="runbutton" class="button" value="View Test Cases" onclick="showCases()"/>
+		<label class="label"><input type="checkbox" id="iframebox" class="checkbox" checked>Run Cases In Iframe</label>
+        </td></tr></table>
+</div>
+<div id="caselistarea">
+	<div id="pageswitch01"></div>
+	<div id="caselists"></div>
+	<div id="pageswitch02"></div>
+</div>
+<div id="testarea">
+	<iframe id="messageframe" height="15%" frameborder="0" marginwidth="0" marginheight="0"></iframe>
+	<iframe id="statusframe" height="10%" frameborder="0" marginwidth="0" marginheight="0"></iframe>
+	<iframe id="testframe" height="70%" frameborder="0" marginwidth="0" marginheight="0"></iframe>
+<div>
 </body>
 </html>
