@@ -692,6 +692,14 @@ class TRunner:
             res_elm.text = actual_result
             stdout_elm.text = stdout
             stderr_elm.text = stderr
+
+            # sdx@kooltux.org: add notes
+            notes_elm=case.find('notes')
+            if notes_elm is None:
+               notes_elm=etree.Element('notes')
+               case.append(notes_elm)
+            notes_elm.text += "\n"+self.extract_notes(stdout)
+
             # handle manual core cases
             if case.get('execution_type') == 'manual':
                 case.set('result', 'BLOCK')
@@ -745,7 +753,10 @@ class TRunner:
                 end_elm.text = datetime.today().strftime("%Y-%m-%d_%H_%M_%S")
                 # set test result
                 if return_code is not None:
-                    if actual_result == "time_out":
+                    # sdx@kooltux.org: if retcode is 69 ("service unavailable" in sysexits.h), test environment is not correct
+                    if actual_result == "69": 
+                        case_result = "N/A"
+                    elif actual_result == "time_out":
                         case_result = "BLOCK"
                     else:
                         if expected_result == actual_result:
@@ -800,3 +811,12 @@ class TRunner:
         old_file.close()
         remove(file_name)
         move(abs_path, file_name)
+
+    def extract_notes(self,buf,start_pattern="###[NOTES]###"):
+       out="" 
+       for line in buf.split("\n"):
+          pos=line.find(start_pattern)
+          if pos>=0:
+             out+=line[pos+len(start_pattern):]+"\n"
+       return out
+
